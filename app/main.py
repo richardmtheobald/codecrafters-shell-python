@@ -10,7 +10,7 @@ def find_executable(exe_name):
     return None
 
 def main():
-    valid_command_names = ["exit","echo","type", "pwd"]
+    valid_command_names = ["exit","echo","type", "pwd", "cd"]
     while True:
         sys.stdout.write("$ ")
 
@@ -19,10 +19,21 @@ def main():
         match command.split():
             case ["exit"]:
                 break
+
             case ["pwd"]:
                 print(os.getcwd())
+
+            case ["cd", directory]:
+                if directory.startswith('~'):
+                    directory = os.environ["HOME"] + directory[1:]
+                if os.path.isdir(directory):
+                    os.chdir(directory)
+                else:
+                    print(f"cd: {directory}: No such file or directory")
+
             case ["echo", *the_rest]:
                 print(f"{' '.join(the_rest)}")
+
             case ["type", command_name]:
                 if command_name in valid_command_names:
                     print(f"{command_name} is a shell builtin")
@@ -32,12 +43,14 @@ def main():
                         print(f"{command_name} is {full_path}")
                     else:
                         print(f"{command_name}: not found")
+
             case [exe_name, *args]:
                 full_path = find_executable(exe_name)
                 if full_path:
                     subprocess.run([exe_name,*args],executable=full_path)
                 else:
                     print(f"{exe_name}: command not found")
+
             case []:
                 pass
 
