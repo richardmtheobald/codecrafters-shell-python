@@ -1,5 +1,13 @@
 import sys
 import os
+import subprocess
+
+def find_executable(exe_name):
+    for path in os.environ.get("PATH","").split(os.pathsep):
+        full_path = os.path.join(path,exe_name)
+        if os.path.isfile(full_path) and os.access(full_path,os.X_OK):
+            return full_path
+    return None
 
 def main():
     while True:
@@ -15,19 +23,20 @@ def main():
             case ["echo", *the_rest]:
                 print(f"{' '.join(the_rest)}")
             case ["type", command_name]:
-                paths = os.environ.get("PATH","").split(os.pathsep)
                 if command_name in valid_command_names:
                     print(f"{command_name} is a shell builtin")
                 else:
-                    for path in paths:
-                        full_path = os.path.join(path,command_name)
-                        if os.path.isfile(full_path) and os.access(full_path,os.X_OK):
-                            print(f"{command_name} is {full_path}")
-                            break
+                    full_path = find_executable(command_name)
+                    if full_path:
+                        print(f"{command_name} is {full_path}")
                     else:
                         print(f"{command_name}: not found")
-            case [first_word, *_]:
-                print(f"{command}: command not found")
+            case [exe_name, *args]:
+                full_path = find_executable(exe_name)
+                if full_path:
+                    subprocess.run([exe_name,*args],executable=full_path)
+                else:
+                    print(f"{exe_name}: command not found")
             case []:
                 pass
 
