@@ -16,7 +16,10 @@ def tokenize(token_string):
             else:
                 current_token += character
         elif mode == "double":
-            if character == '"':
+            if character == "\\" and i + 1 < len(token_string) and token_string[i + 1] in ['"', "\\", "$", "`", "\n"]:
+                i += 1
+                current_token += token_string[i]
+            elif character == '"':
                 mode = "normal"
             else:
                 current_token += character
