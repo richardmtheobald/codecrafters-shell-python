@@ -2,6 +2,34 @@ import sys
 import os
 import subprocess
 
+valid_command_names = ["exit","echo","type", "pwd", "cd"]
+parser_commands = {
+    ">": ("stdout", "w"),
+    "1>": ("stdout", "w"),
+    "2>": ("stderr", "w"),
+    ">>": ("stdout", "a"),
+    "1>>": ("stdout", "a"),
+    "2>>": ("stderr", "a")
+}
+
+def parse(tokens):
+    args = []
+    redirects = {}
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token in parser_commands and i+1 < len(tokens):
+            channel, mode = parser_commands[token]
+            redirects[channel] = {
+                "filename":tokens[i+1],
+                "mode":mode
+            }
+            i += 2
+        else:
+            args.append(token)
+            i+=1
+    return args, redirects
+
 def tokenize(token_string):
     tokens = []
     current_token = ""
@@ -57,18 +85,26 @@ def find_executable(exe_name):
     return None
 
 def main():
-    valid_command_names = ["exit","echo","type", "pwd", "cd"]
     while True:
         sys.stdout.write("$ ")
 
         command = input()
 
-        match tokenize(command):
+        args, redirects = parse(tokenize(command))
+
+        streams = {}
+        for out_type in ["stdout", "stderr"]:
+            if out_type in redirects:
+                streams[out_type] = open(redirects[out_type]["filename"], redirects[out_type]["mode"])
+            else:
+                streams[out_type] = getattr(sys, out_type)
+
+        match args:
             case ["exit"]:
                 break
 
             case ["pwd"]:
-                print(os.getcwd())
+                print(os.getcwd(), file=streams["stdout"])
 
             case ["cd", directory]:
                 if directory.startswith('~'):
@@ -76,30 +112,35 @@ def main():
                 if os.path.isdir(directory):
                     os.chdir(directory)
                 else:
-                    print(f"cd: {directory}: No such file or directory")
+                    print(f"cd: {directory}: No such file or directory", file=streams["stderr"])
 
             case ["echo", *the_rest]:
-                print(f"{' '.join(the_rest)}")
+                print(f"{' '.join(the_rest)}", file=streams["stdout"])
 
             case ["type", command_name]:
                 if command_name in valid_command_names:
-                    print(f"{command_name} is a shell builtin")
+                    print(f"{command_name} is a shell builtin", file=streams["stdout"])
                 else:
                     full_path = find_executable(command_name)
                     if full_path:
-                        print(f"{command_name} is {full_path}")
+                        print(f"{command_name} is {full_path}", file=streams["stdout"])
                     else:
-                        print(f"{command_name}: not found")
+                        print(f"{command_name}: not found", file=streams["stdout"])
 
             case [exe_name, *args]:
                 full_path = find_executable(exe_name)
                 if full_path:
-                    subprocess.run([exe_name,*args],executable=full_path)
+                    subprocess.run([exe_name,*args],executable=full_path,
+                                   stdout=streams["stdout"], stderr=streams["stderr"])
                 else:
-                    print(f"{exe_name}: command not found")
+                    print(f"{exe_name}: command not found", file=streams["stderr"])
 
             case []:
                 pass
+
+        for out_type, stream in streams.items():
+            if stream is not getattr(sys, out_type):
+                stream.close()
 
 
 if __name__ == "__main__":
