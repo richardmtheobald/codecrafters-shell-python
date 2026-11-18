@@ -7,10 +7,15 @@ def main():
 
         command = input()
 
-        if command == "exit":
-            break
-
-        print(f"{command}: command not found")
+        match command.split():
+            case ["exit"]:
+                break
+            case ["echo", *the_rest]:
+                print(f"{the_rest}")
+            case [first_word, *_]:
+                print(f"{command}: command not found")
+            case []:
+                print("$ ")
 
 
 if __name__ == "__main__":
