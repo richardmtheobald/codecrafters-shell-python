@@ -10,16 +10,17 @@ def find_executable(exe_name):
     return None
 
 def main():
+    valid_command_names = ["exit","echo","type", "pwd"]
     while True:
         sys.stdout.write("$ ")
 
         command = input()
 
-        valid_command_names = ["exit","echo","type"]
-
         match command.split():
             case ["exit"]:
                 break
+            case ["pwd"]:
+                print(os.getcwd())
             case ["echo", *the_rest]:
                 print(f"{' '.join(the_rest)}")
             case ["type", command_name]:
