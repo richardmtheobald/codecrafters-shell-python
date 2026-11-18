@@ -2,6 +2,50 @@ import sys
 import os
 import subprocess
 
+def tokenize(token_string):
+    tokens = []
+    current_token = ""
+    mid_token = False
+    i = 0
+    mode = "normal"
+    while i < len(token_string):
+        character = token_string[i]
+        if mode == "single":
+            if character == "'":
+                mode = "normal"
+            else:
+                current_token += character
+        elif mode == "double":
+            if character == '"':
+                mode = "normal"
+            else:
+                current_token += character
+        elif mode == "normal":
+            if character == "'":
+                mode = "single"
+                mid_token = True
+            elif character == '"':
+                mode = "double"
+                mid_token = True
+            elif character.isspace():
+                if mid_token:
+                    tokens.append(current_token)
+                    current_token = ""
+                    mid_token = False
+            elif character == "\\":
+                i += 1
+                if i < len(token_string):
+                    current_token += token_string[i]
+                    mid_token = True
+            else:
+                current_token += character
+                mid_token = True
+        i += 1
+    if mid_token:
+        tokens.append(current_token)
+    return tokens
+
+
 def find_executable(exe_name):
     for path in os.environ.get("PATH","").split(os.pathsep):
         full_path = os.path.join(path,exe_name)
@@ -16,7 +60,7 @@ def main():
 
         command = input()
 
-        match command.split():
+        match tokenize(command):
             case ["exit"]:
                 break
 
