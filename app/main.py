@@ -14,12 +14,21 @@ parser_commands = {
 }
 
 def auto_completer(text, state):
-    matches = [name for name in valid_command_names if name.startswith(text)]
-    for name in find_executables_starting_with(text):
-        if name not in matches:
-            matches.append(name)
+    line = readline.get_line_buffer()
+
+    if line[:readline.get_begidx()].strip() == "":
+        matches = [name for name in valid_command_names if name.startswith(text)]
+        for name in find_executables_starting_with(text):
+            if name not in matches:
+                matches.append(name)
+        matches = [name + " " for name in matches]
+    else:
+        matches = find_files_starting_with(text)
+
+    matches.sort()
+
     if state < len(matches):
-        return matches[state] + " "
+        return matches[state]
     return None
 
 def parse(tokens):
@@ -105,8 +114,32 @@ def find_executables_starting_with(text):
                 found.append(exe_name)
     return found
 
+def find_files_starting_with(text):
+    slash_location = text.rfind("/")
+    folder_path = text[:slash_location + 1]
+    file_name = text[slash_location+1:]
+    search_dir = folder_path or "."
+    if search_dir.startswith('~'):
+        search_dir = os.environ["HOME"] + search_dir[1:]
+
+    if not os.path.isdir(search_dir):
+        return []
+
+    matches = []
+    for name in os.listdir(search_dir):
+        if not name.startswith(file_name):
+            continue
+        if name.startswith(".") and not file_name.startswith("."):
+            continue
+        if os.path.isdir(os.path.join(search_dir, name)):
+            matches.append(folder_path + name + "/")
+        else:
+            matches.append(folder_path + name + " ")
+    return matches
+
 def main():
     readline.set_completer(auto_completer)
+    readline.set_completer_delims(" \t\n")
     readline.parse_and_bind("tab: complete")
     while True:
         command = input("$ ")
