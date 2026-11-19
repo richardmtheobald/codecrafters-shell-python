@@ -13,10 +13,13 @@ parser_commands = {
     "2>>": ("stderr", "a")
 }
 
-def builtin_auto_completer(text, state):
-    matches = [name + " " for name in valid_command_names if name.startswith(text)]
+def auto_completer(text, state):
+    matches = [name for name in valid_command_names if name.startswith(text)]
+    for name in find_executables_starting_with(text):
+        if name not in matches:
+            matches.append(name)
     if state < len(matches):
-        return matches[state]
+        return matches[state] + " "
     return None
 
 def parse(tokens):
@@ -91,8 +94,19 @@ def find_executable(exe_name):
             return full_path
     return None
 
+def find_executables_starting_with(text):
+    found = []
+    for path in os.environ.get("PATH","").split(os.pathsep):
+        if not os.path.isdir(path):
+            continue
+        for exe_name in os.listdir(path):
+            full_path = os.path.join(path,exe_name)
+            if exe_name.startswith(text) and os.path.isfile(full_path) and os.access(full_path,os.X_OK):
+                found.append(exe_name)
+    return found
+
 def main():
-    readline.set_completer(builtin_auto_completer)
+    readline.set_completer(auto_completer)
     readline.parse_and_bind("tab: complete")
     while True:
         command = input("$ ")
