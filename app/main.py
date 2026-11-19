@@ -1,6 +1,7 @@
 import sys
 import os
 import subprocess
+import readline
 
 valid_command_names = ["exit","echo","type", "pwd", "cd"]
 parser_commands = {
@@ -11,6 +12,12 @@ parser_commands = {
     "1>>": ("stdout", "a"),
     "2>>": ("stderr", "a")
 }
+
+def builtin_auto_completer(text, state):
+    matches = [name + " " for name in valid_command_names if name.startswith(text)]
+    if state < len(matches):
+        return matches[state]
+    return None
 
 def parse(tokens):
     args = []
@@ -85,10 +92,10 @@ def find_executable(exe_name):
     return None
 
 def main():
+    readline.set_completer(builtin_auto_completer)
+    readline.parse_and_bind("tab: complete")
     while True:
-        sys.stdout.write("$ ")
-
-        command = input()
+        command = input("$ ")
 
         args, redirects = parse(tokenize(command))
 
