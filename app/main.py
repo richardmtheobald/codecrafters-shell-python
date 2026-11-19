@@ -241,7 +241,7 @@ def main():
                             stdout=streams["stdout"],
                             stderr=streams["stderr"]
                         )
-                        number = max([job["number"] for job in jobs], default=)+1
+                        number = max([job["number"] for job in jobs], default=0)+1
                         jobs.append({
                             "number": number,
                             "process": process,
