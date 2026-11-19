@@ -3,7 +3,7 @@ import os
 import subprocess
 import readline
 
-valid_command_names = ["exit","echo","type", "pwd", "cd"]
+valid_command_names = ["exit","echo","type", "pwd", "cd", "complete"]
 parser_commands = {
     ">": ("stdout", "w"),
     "1>": ("stdout", "w"),
@@ -12,6 +12,7 @@ parser_commands = {
     "1>>": ("stdout", "a"),
     "2>>": ("stderr", "a")
 }
+completion_scripts = {}
 
 def auto_completer(text, state):
     line = readline.get_line_buffer()
@@ -23,7 +24,18 @@ def auto_completer(text, state):
                 matches.append(name)
         matches = [name + " " for name in matches]
     else:
-        matches = find_files_starting_with(text)
+        words = line[:readline.get_begidx()].split()
+        command_name = words[0]
+        if command_name in completion_scripts:
+            result = subprocess.run(
+                [completion_scripts[command_name], command_name, text, words[-1]],
+                capture_output=True,
+                text=True,
+                env={**os.environ, "COMP_LINE": line, "COMP_POINT": str(readline.get_endidx())}
+            )
+            matches = [option + " " for option in result.stdout.splitlines() if option]
+        else:
+            matches = find_files_starting_with(text)
 
     matches.sort()
 
@@ -180,6 +192,21 @@ def main():
                         print(f"{command_name} is {full_path}", file=streams["stdout"])
                     else:
                         print(f"{command_name}: not found", file=streams["stdout"])
+
+            case ["complete", "-C", script, command_name]:
+                completion_scripts[command_name] = script
+
+            case ["complete", "-p", command_name]:
+                if command_name in completion_scripts:
+                    print(f"complete -C '{completion_scripts[command_name]}' {command_name}", file=streams["stdout"])
+                else:
+                    print(f"complete: {command_name}: no completion specification", file=streams['stderr'])
+
+            case ["complete", "-r", command_name]:
+                completion_scripts.pop(command_name, None)
+
+            case ["complete", *_]:
+                print(f"invalid argument", file=streams["stderr"])
 
             case [exe_name, *args]:
                 full_path = find_executable(exe_name)
