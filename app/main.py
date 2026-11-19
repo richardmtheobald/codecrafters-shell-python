@@ -3,7 +3,7 @@ import os
 import subprocess
 import readline
 
-valid_command_names = ["exit","echo","type", "pwd", "cd", "complete"]
+valid_command_names = ["exit","echo","type", "pwd", "cd", "complete", "jobs"]
 parser_commands = {
     ">": ("stdout", "w"),
     "1>": ("stdout", "w"),
@@ -153,10 +153,17 @@ def main():
     readline.set_completer(auto_completer)
     readline.set_completer_delims(" \t\n")
     readline.parse_and_bind("tab: complete")
+    jobs = []
     while True:
         command = input("$ ")
 
         args, redirects = parse(tokenize(command))
+
+        #for processes that are run in the background, we need to strip out the & but let the executor know it's a background process
+        background = False
+        if args and args[-1] == "&":
+            background = True
+            args = args[:-1]
 
         streams = {}
         for out_type in ["stdout", "stderr"]:
@@ -208,11 +215,46 @@ def main():
             case ["complete", *_]:
                 print(f"invalid argument", file=streams["stderr"])
 
+            case ["jobs"]:
+                for index, job in enumerate(jobs):
+                    if index == len(jobs) - 1:
+                        marker = "+"
+                    elif index == len(jobs) - 2:
+                        marker = "-"
+                    else:
+                        marker = " "
+                    if job["process"].poll() is None:
+                        status = "Running"
+                        command_text = job["command"] + " &"
+                    else:
+                        status = "Done"
+                        command_text = job["command"]
+                    print(f"[{job['number']}]{marker}  {status:<24}{command_text}", file=streams["stdout"])
+                jobs[:] = [job for job in jobs if job["process"].poll() is None]
+
             case [exe_name, *args]:
                 full_path = find_executable(exe_name)
                 if full_path:
-                    subprocess.run([exe_name,*args],executable=full_path,
-                                   stdout=streams["stdout"], stderr=streams["stderr"])
+                    if background:
+                        process = subprocess.Popen([exe_name, *args],
+                            executable=full_path,
+                            stdout=streams["stdout"],
+                            stderr=streams["stderr"]
+                        )
+                        number = max([job["number"] for job in jobs], default=)+1
+                        jobs.append({
+                            "number": number,
+                            "process": process,
+                            "command": " ".join([exe_name, *args])
+                        })
+                        print(f"[{number}] {process.pid}", file=streams["stdout"])
+                    else:
+                        subprocess.run(
+                            [exe_name,*args],
+                            executable=full_path,
+                            stdout=streams["stdout"],
+                            stderr=streams["stderr"]
+                        )
                 else:
                     print(f"{exe_name}: command not found", file=streams["stderr"])
 
