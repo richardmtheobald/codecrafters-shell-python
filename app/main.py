@@ -149,12 +149,31 @@ def find_files_starting_with(text):
             matches.append(folder_path + name + " ")
     return matches
 
+def report_jobs(jobs, include_running, out):
+    still_running = []
+    for index, job in enumerate(jobs):
+        if index == len(jobs) - 1:
+            marker = "+"
+        elif index == len(jobs) - 2:
+            marker = "-"
+        else:
+            marker = " "
+
+        if job["process"].poll() is None:
+            still_running.append(job)
+            if include_running:
+                print(f"[{job['number']}]{marker}  {'Running':<24}{job['command']} &", file=out)
+        else:
+            print(f"[{job['number']}]{marker}  {'Done':<24}{job['command']}", file=out)
+    jobs[:] = still_running
+
 def main():
     readline.set_completer(auto_completer)
     readline.set_completer_delims(" \t\n")
     readline.parse_and_bind("tab: complete")
     jobs = []
     while True:
+        report_jobs(jobs, False, sys.stdout)
         command = input("$ ")
 
         args, redirects = parse(tokenize(command))
@@ -216,21 +235,7 @@ def main():
                 print(f"invalid argument", file=streams["stderr"])
 
             case ["jobs"]:
-                for index, job in enumerate(jobs):
-                    if index == len(jobs) - 1:
-                        marker = "+"
-                    elif index == len(jobs) - 2:
-                        marker = "-"
-                    else:
-                        marker = " "
-                    if job["process"].poll() is None:
-                        status = "Running"
-                        command_text = job["command"] + " &"
-                    else:
-                        status = "Done"
-                        command_text = job["command"]
-                    print(f"[{job['number']}]{marker}  {status:<24}{command_text}", file=streams["stdout"])
-                jobs[:] = [job for job in jobs if job["process"].poll() is None]
+                report_jobs(jobs, True, streams["stdout"])
 
             case [exe_name, *args]:
                 full_path = find_executable(exe_name)
