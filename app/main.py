@@ -331,7 +331,7 @@ def run_builtin(args, out, err):
 
         case ["declare", "-p", name]:
             if name in shell_variables:
-                print(f'declare -- {name}="{shell_variables[name]}', file=out)
+                print(f'declare -- {name}="{shell_variables[name]}"', file=out)
             else:
                 print(f"declare: {name}: not found", file=err)
 
