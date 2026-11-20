@@ -167,6 +167,38 @@ def report_jobs(jobs, include_running, out):
             print(f"[{job['number']}]{marker}  {'Done':<24}{job['command']}", file=out)
     jobs[:] = still_running
 
+def run_pipeline(segments):
+    processes = []
+    previous_output_stream = None
+
+    for index, segment in enumerate(segments):
+        args, _ = parse(segment)
+        is_last_segment = index == len(segments) - 1
+
+        process = subprocess.Popen(
+            args,
+            stdin=previous_output_stream,
+            stdout=None if is_last_segment else subprocess.PIPE
+        )
+
+        if previous_output_stream is not None:
+            previous_output_stream.close()
+
+        previous_output_stream = process.stdout
+        processes.append(process)
+
+    for process in processes:
+        process.wait()
+
+def split_pipeline(tokens):
+    segments = [[]]
+    for token in tokens:
+        if token == "|":
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    return segments
+
 def main():
     readline.set_completer(auto_completer)
     readline.set_completer_delims(" \t\n")
@@ -175,6 +207,12 @@ def main():
     while True:
         report_jobs(jobs, False, sys.stdout)
         command = input("$ ")
+
+        tokens = tokenize(command)
+        pipe_segments = split_pipeline(tokens)
+        if len(pipe_segments) > 1:
+            run_pipeline(segments)
+            continue
 
         args, redirects = parse(tokenize(command))
 
