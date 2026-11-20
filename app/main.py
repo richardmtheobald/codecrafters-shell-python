@@ -13,6 +13,7 @@ parser_commands = {
     "2>>": ("stderr", "a")
 }
 completion_scripts = {}
+jobs = []
 
 def auto_completer(text, state):
     line = readline.get_line_buffer()
@@ -175,20 +176,75 @@ def run_pipeline(segments):
         args, _ = parse(segment)
         is_last_segment = index == len(segments) - 1
 
-        process = subprocess.Popen(
-            args,
-            stdin=previous_output_stream,
-            stdout=None if is_last_segment else subprocess.PIPE
-        )
+        if args[0] in valid_command_names:
+            if is_last_segment:
+                run_builtin(args, sys.stdout, sys.stderr)
+                next_output = None
+            else:
+                read_end, write_end = os.pipe()
+                with os.fdopen(write_end, "w") as pipe_writer:
+                    run_builtin(args, pipe_writer, sys.stderr)
+                next_output = os.fdopen(read_end)
+        else:
+            process = subprocess.Popen(
+                args,
+                stdin=previous_output_stream,
+                stdout=None if is_last_segment else subprocess.PIPE
+            )
+            processes.append(process)
+            next_output = process.stdout
 
         if previous_output_stream is not None:
             previous_output_stream.close()
 
-        previous_output_stream = process.stdout
-        processes.append(process)
+        previous_output_stream = next_output
 
     for process in processes:
         process.wait()
+
+def run_builtin(args, out, err):
+    match args:
+        case ["pwd"]:
+            print(os.getcwd(), file=out)
+
+        case ["cd", directory]:
+            if directory.startswith('~'):
+                directory = os.environ["HOME"] + directory[1:]
+            if os.path.isdir(directory):
+                os.chdir(directory)
+            else:
+                print(f"cd: {directory}: No such file or directory", file=err)
+
+        case ["echo", *the_rest]:
+            print(' '.join(the_rest), file=out)
+
+        case ["type", command_name]:
+            if command_name in valid_command_names:
+                print(f"{command_name} is a shell builtin", file=out)
+            else:
+                full_path = find_executable(command_name)
+                if full_path:
+                    print(f"{command_name} is {full_path}", file=out)
+                else:
+                    print(f"{command_name}: not found", file=out)
+
+        case ["complete", "-C", script, command_name]:
+            completion_scripts[command_name] = script
+
+        case ["complete", "-p", command_name]:
+            if command_name in completion_scripts:
+                print(f"complete -C '{completion_scripts[command_name]}' {command_name}", file=out)
+            else:
+                print(f"complete: {command_name}: no completion specification", file=err)
+
+        case ["complete", "-r", command_name]:
+            completion_scripts.pop(command_name, None)
+
+        case ["complete", *_]:
+            pass
+
+        case ["jobs"]:
+            report_jobs(jobs, True, out)
 
 def split_pipeline(tokens):
     segments = [[]]
@@ -203,7 +259,6 @@ def main():
     readline.set_completer(auto_completer)
     readline.set_completer_delims(" \t\n")
     readline.parse_and_bind("tab: complete")
-    jobs = []
     while True:
         report_jobs(jobs, False, sys.stdout)
         command = input("$ ")
@@ -214,7 +269,7 @@ def main():
             run_pipeline(pipe_segments)
             continue
 
-        args, redirects = parse(tokenize(command))
+        args, redirects = parse(tokens)
 
         #for processes that are run in the background, we need to strip out the & but let the executor know it's a background process
         background = False
@@ -233,47 +288,8 @@ def main():
             case ["exit"]:
                 break
 
-            case ["pwd"]:
-                print(os.getcwd(), file=streams["stdout"])
-
-            case ["cd", directory]:
-                if directory.startswith('~'):
-                    directory = os.environ["HOME"] + directory[1:]
-                if os.path.isdir(directory):
-                    os.chdir(directory)
-                else:
-                    print(f"cd: {directory}: No such file or directory", file=streams["stderr"])
-
-            case ["echo", *the_rest]:
-                print(f"{' '.join(the_rest)}", file=streams["stdout"])
-
-            case ["type", command_name]:
-                if command_name in valid_command_names:
-                    print(f"{command_name} is a shell builtin", file=streams["stdout"])
-                else:
-                    full_path = find_executable(command_name)
-                    if full_path:
-                        print(f"{command_name} is {full_path}", file=streams["stdout"])
-                    else:
-                        print(f"{command_name}: not found", file=streams["stdout"])
-
-            case ["complete", "-C", script, command_name]:
-                completion_scripts[command_name] = script
-
-            case ["complete", "-p", command_name]:
-                if command_name in completion_scripts:
-                    print(f"complete -C '{completion_scripts[command_name]}' {command_name}", file=streams["stdout"])
-                else:
-                    print(f"complete: {command_name}: no completion specification", file=streams['stderr'])
-
-            case ["complete", "-r", command_name]:
-                completion_scripts.pop(command_name, None)
-
-            case ["complete", *_]:
-                print(f"invalid argument", file=streams["stderr"])
-
-            case ["jobs"]:
-                report_jobs(jobs, True, streams["stdout"])
+            case [builtin_name, *_] if builtin_name in valid_command_names:
+                run_builtin(args, streams["stdout"], streams["stderr"])
 
             case [exe_name, *args]:
                 full_path = find_executable(exe_name)
