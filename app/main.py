@@ -211,7 +211,7 @@ def main():
         tokens = tokenize(command)
         pipe_segments = split_pipeline(tokens)
         if len(pipe_segments) > 1:
-            run_pipeline(segments)
+            run_pipeline(pipe_segments)
             continue
 
         args, redirects = parse(tokenize(command))
