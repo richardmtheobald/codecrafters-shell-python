@@ -339,7 +339,7 @@ def run_builtin(args, out, err):
             for assignment in assignments:
                 name, _, value = assignment.partition("=")
                 if not is_valid_name(name):
-                    print(f"Declare: `{assignment}': not a valid identifier", file=err)
+                    print(f"declare: `{assignment}': not a valid identifier", file=err)
                     continue
                 shell_variables[name] = value
 
