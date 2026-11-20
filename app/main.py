@@ -3,7 +3,7 @@ import os
 import subprocess
 import readline
 
-valid_command_names = ["exit","echo","type", "pwd", "cd", "complete", "jobs"]
+valid_command_names = ["exit","echo","type", "pwd", "cd", "complete", "jobs", "history"]
 parser_commands = {
     ">": ("stdout", "w"),
     "1>": ("stdout", "w"),
@@ -14,6 +14,26 @@ parser_commands = {
 }
 completion_scripts = {}
 jobs = []
+history = []
+history_appended_count = 0
+
+def add_to_history(line):
+    history.append(line)
+    readline.add_history(line)
+
+def load_history(path):
+    if not os.path.isfile(path):
+        return
+    with open(path) as file:
+        for line in file:
+            line = line.rstrip("\n")
+            if line:
+                add_to_history(line)
+
+def save_history(path, lines, mode):
+    with open(path, mode) as file:
+        for line in lines:
+            file.write(line + "\n")
 
 def auto_completer(text, state):
     line = readline.get_line_buffer()
@@ -203,6 +223,7 @@ def run_pipeline(segments):
         process.wait()
 
 def run_builtin(args, out, err):
+    global history_appended_count
     match args:
         case ["pwd"]:
             print(os.getcwd(), file=out)
@@ -246,6 +267,25 @@ def run_builtin(args, out, err):
         case ["jobs"]:
             report_jobs(jobs, True, out)
 
+        case ["history"]:
+            for number, line in enumerate(history, start=1):
+                print(f"{number:>5} {line}", file=out)
+
+        case ["history", "-r", path]:
+            load_history(path)
+
+        case ["history", "-w", path]:
+            save_history(path, history, "w")
+
+        case ["history", "-a", path]:
+            save_history(path, history[history_appended_count:], "a")
+            history_appended_count = len(history)
+
+        case ["history", count]:
+            start = max(len(history) - int(count), 0)
+            for index in range(start, len(history)):
+                print(f"{index + 1:>5} {history[index]}", file=out)
+
 def split_pipeline(tokens):
     segments = [[]]
     for token in tokens:
@@ -259,9 +299,21 @@ def main():
     readline.set_completer(auto_completer)
     readline.set_completer_delims(" \t\n")
     readline.parse_and_bind("tab: complete")
+    if hasattr(readline, "set_auto_history"):
+        readline.set_auto_history(False)
+
+    global history_appended_count
+    histfile = os.environ.get("HISTFILE")
+    if histfile:
+        load_history(histfile)
+    history_appended_count = len(history)
+
     while True:
         report_jobs(jobs, False, sys.stdout)
         command = input("$ ")
+
+        if command.strip():
+            add_to_history(command)
 
         tokens = tokenize(command)
         pipe_segments = split_pipeline(tokens)
@@ -323,6 +375,9 @@ def main():
         for out_type, stream in streams.items():
             if stream is not getattr(sys, out_type):
                 stream.close()
+
+    if histfile:
+        save_history(histfile, history, "w")
 
 
 if __name__ == "__main__":
