@@ -3,7 +3,7 @@ import os
 import subprocess
 import readline
 
-valid_command_names = ["exit","echo","type", "pwd", "cd", "complete", "jobs", "history"]
+valid_command_names = ["exit","echo","type", "pwd", "cd", "complete", "jobs", "history", "declare"]
 parser_commands = {
     ">": ("stdout", "w"),
     "1>": ("stdout", "w"),
@@ -16,6 +16,32 @@ completion_scripts = {}
 jobs = []
 history = []
 history_appended_count = 0
+shell_variables = {}
+
+def is_valid_name(name):
+    if name == "" or name[0].isdigit():
+        return False
+    return all(c.isascii() and (c.isalnum() or c == "_") for c in name)
+
+def lookup_variable(name):
+    if name in shell_variables:
+        return shell_variables[name]
+    return os.environ.get(name,"")
+
+def read_variable(token_string, i):
+    if i+1 < len(token_string) and token_string[i+1] == "{":
+        end = token_string.find("}", i+2)
+        if end == -1:
+            return None
+        return lookup_variable(token_string[i + 2:end]), end
+
+    j = i+1
+    while j < len(token_string) and token_string[j].isascii() and (token_string[j].isalnum() or token_string[j] == "_"):
+        j += 1
+    name = token_string[i + 1:j]
+    if not is_valid_name(name):
+        return None
+    return lookup_variable(name), j-1
 
 def add_to_history(line):
     history.append(line)
@@ -101,6 +127,13 @@ def tokenize(token_string):
                 current_token += token_string[i]
             elif character == '"':
                 mode = "normal"
+            elif character == "$":
+                result = read_variable(token_string, i)
+                if result is None:
+                    current_token += character
+                else:
+                    value, i = result
+                    current_token += value
             else:
                 current_token += character
         elif mode == "normal":
@@ -120,6 +153,16 @@ def tokenize(token_string):
                 if i < len(token_string):
                     current_token += token_string[i]
                     mid_token = True
+            elif character == "$":
+                result = read_variable(token_string, i)
+                if result is None:
+                    current_token += character
+                    mid_token = True
+                else:
+                    value, i = result
+                    current_token += value
+                    if value:
+                        mid_token = True
             else:
                 current_token += character
                 mid_token = True
@@ -285,6 +328,20 @@ def run_builtin(args, out, err):
             start = max(len(history) - int(count), 0)
             for index in range(start, len(history)):
                 print(f"{index + 1:>5} {history[index]}", file=out)
+
+        case ["declare", "-p", name]:
+            if name in shell_variables:
+                print(f'declare -- {name}="{shell_variables[name]}', file=out)
+            else:
+                print(f"declare: {name}: not found", file=err)
+
+        case ["declare", *assignments]:
+            for assignment in assignments:
+                name, _, value = assignment.partition("=")
+                if not is_valid_name(name):
+                    print(f"Declare: `{assignment}': not a valid identifier", file=err)
+                    continue
+                shell_variables[name] = value
 
 def split_pipeline(tokens):
     segments = [[]]
